@@ -1,0 +1,88 @@
+const pool = require('../config/db');
+const { publishToPage } = require('./facebook.service');
+const { publishToInstagram } = require('./instagram.service');
+const logger = require('../utils/logger');
+const env = require('../config/env');
+
+async function publishPost(postId) {
+  // Get post with media
+  const [postRows] = await pool.execute('SELECT * FROM posts WHERE id = ?', [postId]);
+  if (postRows.length === 0) throw new Error('Post not found');
+  const post = postRows[0];
+
+  // Get media files
+  const [mediaRows] = await pool.execute(
+    `SELECT m.* FROM media m
+     JOIN post_media pm ON m.id = pm.media_id
+     WHERE pm.post_id = ?
+     ORDER BY pm.sort_order`,
+    [postId]
+  );
+
+  const mediaFiles = mediaRows.map(m => ({
+    id: m.id,
+    filePath: m.file_path,
+    mimeType: m.mime_type,
+    originalName: m.original_name,
+  }));
+
+  // Get targets
+  const [targets] = await pool.execute(
+    `SELECT pt.id, pt.social_account_id, sa.platform, sa.platform_account_id, sa.access_token
+     FROM post_targets pt
+     JOIN social_accounts sa ON pt.social_account_id = sa.id
+     WHERE pt.post_id = ? AND pt.status = 'pending'`,
+    [postId]
+  );
+
+  if (targets.length === 0) {
+    return { allSuccess: true, results: [] };
+  }
+
+  const results = [];
+  let allSuccess = true;
+
+  for (const target of targets) {
+    try {
+      let platformPostId;
+
+      if (target.platform === 'facebook_page') {
+        platformPostId = await publishToPage(
+          target.platform_account_id,
+          target.access_token,
+          post.content,
+          mediaFiles
+        );
+      } else if (target.platform === 'instagram_business') {
+        const publicBaseUrl = env.igPublicBaseUrl || null;
+        platformPostId = await publishToInstagram(
+          target.platform_account_id,
+          target.access_token,
+          post.content,
+          mediaFiles,
+          publicBaseUrl
+        );
+      }
+
+      await pool.execute(
+        "UPDATE post_targets SET status = 'published', platform_post_id = ?, published_at = NOW() WHERE id = ?",
+        [platformPostId, target.id]
+      );
+
+      results.push({ targetId: target.id, platform: target.platform, success: true, platformPostId });
+      logger.info(`Post ${postId}: published to ${target.platform} (${target.platform_account_id})`);
+    } catch (err) {
+      allSuccess = false;
+      await pool.execute(
+        "UPDATE post_targets SET status = 'failed', error_message = ? WHERE id = ?",
+        [err.message, target.id]
+      );
+      results.push({ targetId: target.id, platform: target.platform, success: false, error: err.message });
+      logger.error(`Post ${postId}: failed to publish to ${target.platform}: ${err.message}`);
+    }
+  }
+
+  return { allSuccess, results };
+}
+
+module.exports = { publishPost };
