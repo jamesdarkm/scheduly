@@ -1,5 +1,14 @@
 const pool = require('../config/db');
 
+// Convert an ISO 8601 string (or anything Date accepts) into the
+// MySQL DATETIME format: YYYY-MM-DD HH:MM:SS (UTC).
+function toMysqlDatetime(value) {
+  if (value == null || value === '') return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 async function createPost({ title, content, postType, createdBy, teamId, mediaIds, targetAccountIds }) {
   const [result] = await pool.execute(
     `INSERT INTO posts (title, content, post_type, status, created_by, team_id)
@@ -207,7 +216,7 @@ async function updatePost(id, { title, content, postType, assignedTo, teamId, me
   if (assignedTo !== undefined) { fields.push('assigned_to = ?'); values.push(assignedTo || null); }
   if (teamId !== undefined) { fields.push('team_id = ?'); values.push(teamId || null); }
   if (scheduledAt !== undefined) {
-    fields.push('scheduled_at = ?'); values.push(scheduledAt);
+    fields.push('scheduled_at = ?'); values.push(toMysqlDatetime(scheduledAt));
     fields.push('status = ?'); values.push('scheduled');
   }
 
@@ -310,7 +319,7 @@ async function schedulePost(id, scheduledAt, userId, userRole) {
 
   await pool.execute(
     "UPDATE posts SET status = 'scheduled', scheduled_at = ? WHERE id = ?",
-    [scheduledAt, id]
+    [toMysqlDatetime(scheduledAt), id]
   );
 
   return getPost(id);
