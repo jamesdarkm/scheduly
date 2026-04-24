@@ -17,12 +17,18 @@ const pendingStates = new Map();
 
 async function listAccounts(req, res, next) {
   try {
+    // Only return active accounts. Disconnected (is_active = 0) rows are kept
+    // in the DB so historical post_targets still resolve, but they're hidden
+    // from the UI. Pass ?includeInactive=1 to see them all.
+    const includeInactive = req.query.includeInactive === '1';
+    const where = includeInactive ? '1=1' : 'sa.is_active = 1';
     const [rows] = await pool.execute(
       `SELECT sa.id, sa.platform, sa.platform_account_id, sa.account_name, sa.token_expires_at,
               sa.fb_page_id, sa.profile_picture_url, sa.is_active, sa.connected_by, sa.team_id, sa.created_at,
               u.first_name, u.last_name
        FROM social_accounts sa
        JOIN users u ON sa.connected_by = u.id
+       WHERE ${where}
        ORDER BY sa.created_at DESC`
     );
 

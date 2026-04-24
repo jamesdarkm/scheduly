@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listAccounts, startFacebookAuth, startInstagramAuth, disconnectAccount, reconnectAccount } from '../api/socialApi';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { Unlink, RefreshCw, CheckCircle, AlertTriangle, XCircle, Plus, Lock } from 'lucide-react';
+import { Unlink, CheckCircle, AlertTriangle, XCircle, Plus, Lock } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { PLATFORMS, PLATFORM_ORDER, getPlatform } from '../utils/platforms';
@@ -51,10 +51,7 @@ function PlatformTile({ platform, accounts, onConnect, onDisconnect, onReconnect
             const StatusIcon = tokenStatus.icon;
 
             return (
-              <div key={account.id} className={clsx(
-                'flex items-center gap-2 p-2 rounded-lg border',
-                account.isActive ? 'border-slate-200 bg-slate-50/50' : 'border-slate-200 bg-slate-50 opacity-60'
-              )}>
+              <div key={account.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/50">
                 {account.profilePictureUrl ? (
                   <img src={account.profilePictureUrl} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                 ) : (
@@ -62,33 +59,19 @@ function PlatformTile({ platform, accounts, onConnect, onDisconnect, onReconnect
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-slate-900 truncate">{account.accountName}</p>
-                  {account.isActive ? (
-                    <div className="flex items-center gap-1">
-                      <StatusIcon className={clsx('w-2.5 h-2.5', tokenStatus.color)} />
-                      <span className={clsx('text-[10px]', tokenStatus.color)}>{tokenStatus.label}</span>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-slate-400">Disconnected</span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <StatusIcon className={clsx('w-2.5 h-2.5', tokenStatus.color)} />
+                    <span className={clsx('text-[10px]', tokenStatus.color)}>{tokenStatus.label}</span>
+                  </div>
                 </div>
                 {isAdmin && (
-                  account.isActive ? (
-                    <button
-                      onClick={() => { if (confirm(`Disconnect ${account.accountName}?`)) onDisconnect(account.id); }}
-                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
-                      title="Disconnect"
-                    >
-                      <Unlink className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onReconnect(account.id)}
-                      className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded"
-                      title="Reconnect"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
-                  )
+                  <button
+                    onClick={() => { if (confirm(`Remove ${account.accountName}? You'll need to reconnect to use it again.`)) onDisconnect(account.id); }}
+                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                    title="Remove"
+                  >
+                    <Unlink className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
             );
@@ -170,7 +153,7 @@ export default function AccountsPage() {
   const disconnectMut = useMutation({
     mutationFn: disconnectAccount,
     onSuccess: () => {
-      toast.success('Account disconnected');
+      toast.success('Account removed');
       queryClient.invalidateQueries({ queryKey: ['socialAccounts'] });
     },
   });
