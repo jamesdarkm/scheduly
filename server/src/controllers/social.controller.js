@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const pool = require('../config/db');
 const facebookService = require('../services/facebook.service');
+const instagramService = require('../services/instagram.service');
 const { decrypt } = require('../services/token.service');
 const logger = require('../utils/logger');
 
@@ -103,6 +104,65 @@ async function oauthCallback(req, res, next) {
   }
 }
 
+async function startInstagramOAuth(req, res, next) {
+  try {
+    const state = crypto.randomBytes(16).toString('hex');
+    pendingStates.set(state, {
+      userId: req.user.userId,
+      teamId: req.query.teamId || null,
+      platform: 'instagram',
+      timestamp: Date.now(),
+    });
+
+    // Clean old states
+    for (const [key, val] of pendingStates) {
+      if (Date.now() - val.timestamp > 600000) pendingStates.delete(key);
+    }
+
+    const authUrl = instagramService.getAuthUrl(state);
+    res.json({ authUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function instagramCallback(req, res, next) {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    if (error) {
+      logger.warn(`Instagram OAuth denied: ${error} - ${error_description}`);
+      return res.redirect(`${clientUrl}/accounts?error=oauth_denied`);
+    }
+
+    if (!state || !pendingStates.has(state)) {
+      return res.redirect(`${clientUrl}/accounts?error=invalid_state`);
+    }
+
+    const { userId, teamId } = pendingStates.get(state);
+    pendingStates.delete(state);
+
+    // Step 1: Exchange code for short-lived token
+    const { accessToken: shortToken, userId: igUserId } = await instagramService.exchangeCodeForToken(code);
+
+    // Step 2: Exchange for long-lived token (60 days)
+    const { accessToken: longToken } = await instagramService.exchangeForLongLivedToken(shortToken);
+
+    // Step 3: Fetch profile and store account
+    await instagramService.fetchInstagramAccount(longToken, igUserId, userId, teamId);
+
+    logger.info(`Instagram OAuth: connected account ${igUserId} for user ${userId}`);
+    res.redirect(`${clientUrl}/accounts?connected=1`);
+  } catch (err) {
+    logger.error('Instagram OAuth callback error:', {
+      error: err.message,
+      response: err.response?.data,
+    });
+    res.redirect(`${clientUrl}/accounts?error=connection_failed`);
+  }
+}
+
 async function disconnectAccount(req, res, next) {
   try {
     const id = parseInt(req.params.id, 10);
@@ -123,4 +183,12 @@ async function reconnectAccount(req, res, next) {
   }
 }
 
-module.exports = { listAccounts, startOAuth, oauthCallback, disconnectAccount, reconnectAccount };
+module.exports = {
+  listAccounts,
+  startOAuth,
+  oauthCallback,
+  startInstagramOAuth,
+  instagramCallback,
+  disconnectAccount,
+  reconnectAccount,
+};

@@ -11,10 +11,8 @@ import {
   ArrowLeft, Image, X, Upload, Film,
 } from 'lucide-react';
 import { FacebookIcon as Facebook, InstagramIcon as Instagram } from '../components/common/SocialIcons';
+import PostComposer from '../components/posts/PostComposer';
 import clsx from 'clsx';
-
-const IG_LIMIT = 2200;
-const FB_LIMIT = 63206;
 
 function MediaPickerModal({ onSelect, onClose }) {
   const [selectedIds, setSelectedIds] = useState([]);
@@ -117,8 +115,6 @@ export default function PostEditPage() {
   if (isLoading) return <div className="text-center py-12 text-gray-400">Loading...</div>;
   if (!post) return <div className="text-center py-12 text-red-500">Post not found</div>;
 
-  const charCount = content.length;
-
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
@@ -130,22 +126,12 @@ export default function PostEditPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title (optional)</label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Internal reference title"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-            </div>
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-              <textarea value={content} onChange={e => setContent(e.target.value)} rows={8} placeholder="Post content..."
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-y" />
-              <div className="flex justify-end gap-4 mt-1">
-                <span className={clsx('text-xs', charCount > IG_LIMIT ? 'text-red-500' : 'text-gray-400')}>IG: {charCount}/{IG_LIMIT}</span>
-                <span className={clsx('text-xs', charCount > FB_LIMIT ? 'text-red-500' : 'text-gray-400')}>FB: {charCount}/{FB_LIMIT}</span>
-              </div>
-            </div>
-          </div>
+          <PostComposer
+            content={content}
+            onChange={setContent}
+            title={title}
+            onTitleChange={setTitle}
+          />
 
           {/* Media */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">

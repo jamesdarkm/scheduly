@@ -19,6 +19,12 @@ const env = {
     appSecret: process.env.FB_APP_SECRET,
     redirectUri: process.env.FB_REDIRECT_URI,
   },
+  instagram: {
+    appId: process.env.IG_APP_ID || process.env.FB_APP_ID,
+    appSecret: process.env.IG_APP_SECRET || process.env.FB_APP_SECRET,
+    redirectUri: process.env.IG_REDIRECT_URI || 'http://localhost:3001/api/social/auth/instagram/callback',
+  },
+  serverUrl: process.env.SERVER_URL || 'http://localhost:3001',
   encryptionKey: process.env.ENCRYPTION_KEY,
   igPublicBaseUrl: process.env.IG_PUBLIC_BASE_URL || '',
   uploadDir: process.env.UPLOAD_DIR || './uploads',
