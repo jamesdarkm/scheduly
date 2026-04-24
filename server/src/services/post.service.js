@@ -154,6 +154,8 @@ async function listPosts({ page = 1, limit = 20, status, teamId, createdBy, sear
     params
   );
 
+  const safeLimit = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+  const safeOffset = Math.max(0, parseInt(offset, 10) || 0);
   const [rows] = await pool.execute(
     `SELECT p.*,
             u.first_name AS creator_first_name, u.last_name AS creator_last_name
@@ -161,8 +163,8 @@ async function listPosts({ page = 1, limit = 20, status, teamId, createdBy, sear
      JOIN users u ON p.created_by = u.id
      WHERE ${where}
      ORDER BY p.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    params
   );
 
   // Get media for each post (first image only for list view)

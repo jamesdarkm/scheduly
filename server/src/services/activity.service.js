@@ -13,14 +13,15 @@ async function getRecentActivity({ limit = 20, entityType, entityId }) {
     params.push(entityId);
   }
 
+  const safeLimit = Math.max(1, Math.min(200, parseInt(limit, 10) || 20));
   const [rows] = await pool.execute(
     `SELECT a.*, u.first_name, u.last_name
      FROM activity_log a
      LEFT JOIN users u ON a.user_id = u.id
      WHERE ${where}
      ORDER BY a.created_at DESC
-     LIMIT ?`,
-    [...params, limit]
+     LIMIT ${safeLimit}`,
+    params
   );
 
   return rows.map(r => ({

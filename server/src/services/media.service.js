@@ -80,13 +80,15 @@ async function listMedia({ page = 1, limit = 24, type, uploadedBy, teamId }) {
     params
   );
 
+  const safeLimit = Math.max(1, Math.min(100, parseInt(limit, 10) || 24));
+  const safeOffset = Math.max(0, parseInt(offset, 10) || 0);
   const [rows] = await pool.execute(
     `SELECT m.*, u.first_name, u.last_name FROM media m
      JOIN users u ON m.uploaded_by = u.id
      WHERE ${where}
      ORDER BY m.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    params
   );
 
   return {
