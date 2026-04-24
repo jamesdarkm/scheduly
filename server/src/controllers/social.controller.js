@@ -1,9 +1,16 @@
 const crypto = require('crypto');
 const pool = require('../config/db');
+const env = require('../config/env');
 const facebookService = require('../services/facebook.service');
 const instagramService = require('../services/instagram.service');
 const { decrypt } = require('../services/token.service');
 const logger = require('../utils/logger');
+
+// Primary client URL for OAuth redirects back to the frontend.
+// Uses CLIENT_URL if set, otherwise the first origin in CLIENT_URLS, otherwise localhost.
+function clientBase() {
+  return process.env.CLIENT_URL || env.clientOrigins[0] || 'http://localhost:5173';
+}
 
 // In-memory store for CSRF state tokens (adequate for ~20 users)
 const pendingStates = new Map();
@@ -78,11 +85,11 @@ async function oauthCallback(req, res, next) {
 
     if (error) {
       logger.warn(`Facebook OAuth denied: ${error}`);
-      return res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}/accounts?error=oauth_denied`);
+      return res.redirect(`${clientBase()}/accounts?error=oauth_denied`);
     }
 
     if (!state || !pendingStates.has(state)) {
-      return res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}/accounts?error=invalid_state`);
+      return res.redirect(`${clientBase()}/accounts?error=invalid_state`);
     }
 
     const { userId, teamId } = pendingStates.get(state);
@@ -97,10 +104,10 @@ async function oauthCallback(req, res, next) {
     logger.info(`Facebook OAuth: connected ${accounts.length} account(s) for user ${userId}`);
 
     // Redirect back to accounts page with success
-    res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}/accounts?connected=${accounts.length}`);
+    res.redirect(`${clientBase()}/accounts?connected=${accounts.length}`);
   } catch (err) {
     logger.error('Facebook OAuth callback error:', { error: err.message });
-    res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}/accounts?error=connection_failed`);
+    res.redirect(`${clientBase()}/accounts?error=connection_failed`);
   }
 }
 
@@ -127,7 +134,7 @@ async function startInstagramOAuth(req, res, next) {
 }
 
 async function instagramCallback(req, res, next) {
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  const clientUrl = clientBase();
   try {
     const { code, state, error, error_description } = req.query;
 
