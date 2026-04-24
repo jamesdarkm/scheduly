@@ -21,10 +21,26 @@ const analyticsRoutes = require('./routes/analytics.routes');
 const app = express();
 
 // Security & parsing
-app.use(helmet());
-app.use(cors({ origin: env.clientUrl, credentials: true }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow media to load from frontend on another origin
+}));
+
+// CORS: allow configured client origins plus any *.vercel.app preview URLs
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // non-browser / server-to-server
+    if (env.clientOrigins.includes(origin)) return cb(null, true);
+    if (/\.vercel\.app$/.test(new URL(origin).hostname)) return cb(null, true);
+    return cb(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Trust proxy (Railway, Vercel, Cloudflare, etc. sit in front of the app)
+app.set('trust proxy', 1);
 
 // Static files (uploaded media)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
