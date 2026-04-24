@@ -1,20 +1,30 @@
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+const env = require('./src/config/env');
 
 async function run() {
+  console.log(`Connecting to ${env.db.host}:${env.db.port} as ${env.db.user} (db=${env.db.database})...`);
+
+  // Connect without selecting a DB first, so we can CREATE DATABASE if needed.
   const connection = await mysql.createConnection({
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: parseInt(process.env.DB_PORT, 10) || 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASS || '',
+    host: env.db.host,
+    port: env.db.port,
+    user: env.db.user,
+    password: env.db.password,
     multipleStatements: true,
   });
 
-  // Create database if not exists
-  await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME || 'dmm_scheduly'}\``);
-  await connection.changeUser({ database: process.env.DB_NAME || 'dmm_scheduly' });
+  // Create the target DB if the user has permission. If it fails (shared hosting / Railway managed DB),
+  // assume the DB already exists and move on.
+  try {
+    await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${env.db.database}\``);
+  } catch (e) {
+    console.log(`Note: could not CREATE DATABASE (${e.code}) — assuming it already exists.`);
+  }
+
+  await connection.changeUser({ database: env.db.database });
+  console.log(`Using database: ${env.db.database}`);
 
   // Create migrations tracking table
   await connection.execute(`

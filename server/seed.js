@@ -1,14 +1,16 @@
 const bcrypt = require('bcryptjs');
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const env = require('./src/config/env');
 
 async function seed() {
+  console.log(`Seeding against ${env.db.host}:${env.db.port} db=${env.db.database}`);
+
   const connection = await mysql.createConnection({
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: parseInt(process.env.DB_PORT, 10) || 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASS || '',
-    database: process.env.DB_NAME || 'dmm_scheduly',
+    host: env.db.host,
+    port: env.db.port,
+    user: env.db.user,
+    password: env.db.password,
+    database: env.db.database,
   });
 
   // Check if admin already exists
