@@ -20,6 +20,11 @@ const analyticsRoutes = require('./routes/analytics.routes');
 
 const app = express();
 
+// Health check — above all middleware so it always responds, even if DB is down
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Security & parsing
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow media to load from frontend on another origin
@@ -56,11 +61,6 @@ app.use('/api/comments', commentsRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/analytics', analyticsRoutes);
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 // Error handler
 app.use(errorHandler);
