@@ -73,12 +73,21 @@ async function publishPost(postId) {
       logger.info(`Post ${postId}: published to ${target.platform} (${target.platform_account_id})`);
     } catch (err) {
       allSuccess = false;
+      // Surface the real Graph API error body if available — that's what tells us *why* it failed.
+      const apiError = err.response?.data?.error;
+      const detail = apiError
+        ? `${apiError.message || apiError.type || ''} ${apiError.error_user_msg ? '— ' + apiError.error_user_msg : ''} (code=${apiError.code}/${apiError.error_subcode || '-'})`.trim()
+        : err.message;
+
       await pool.execute(
         "UPDATE post_targets SET status = 'failed', error_message = ? WHERE id = ?",
-        [err.message, target.id]
+        [detail.slice(0, 500), target.id]
       );
-      results.push({ targetId: target.id, platform: target.platform, success: false, error: err.message });
-      logger.error(`Post ${postId}: failed to publish to ${target.platform}: ${err.message}`);
+      results.push({ targetId: target.id, platform: target.platform, success: false, error: detail });
+      logger.error(`Post ${postId}: failed to publish to ${target.platform}: ${detail}`, {
+        responseBody: err.response?.data,
+        status: err.response?.status,
+      });
     }
   }
 

@@ -82,7 +82,13 @@ async function fetchFacebookInsights(postId, token) {
 
     return metrics;
   } catch (err) {
-    logger.error(`Facebook insights error: ${err.message}`);
+    const apiError = err.response?.data?.error;
+    logger.error(`Facebook insights error: ${apiError?.message || err.message}`, {
+      code: apiError?.code,
+      subcode: apiError?.error_subcode,
+      type: apiError?.type,
+      postId,
+    });
     return {};
   }
 }
@@ -116,7 +122,12 @@ async function fetchInstagramInsights(mediaId, token) {
 
     return metrics;
   } catch (err) {
-    logger.error(`Instagram insights error: ${err.message}`);
+    const apiError = err.response?.data?.error;
+    logger.error(`Instagram insights error: ${apiError?.message || err.message}`, {
+      code: apiError?.code,
+      subcode: apiError?.error_subcode,
+      mediaId,
+    });
     return {};
   }
 }
