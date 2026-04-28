@@ -25,10 +25,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Security & parsing
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow media to load from frontend on another origin
-}));
+// Security & parsing — but skip helmet on /uploads so Meta's image fetchers
+// don't choke on CSP / X-Frame-Options / nosniff combos. Static media is
+// public anyway, no security benefit to wrapping it in a strict CSP.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/uploads/')) return next();
+  return helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })(req, res, next);
+});
 
 // CORS: allow configured client origins plus any *.vercel.app preview URLs
 app.use(cors({
@@ -47,8 +52,19 @@ app.use(express.urlencoded({ extended: true }));
 // Trust proxy (Railway, Vercel, Cloudflare, etc. sit in front of the app)
 app.set('trust proxy', 1);
 
-// Static files (uploaded media)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Static files (uploaded media). Explicit headers + long cache so Meta's
+// CDN-style fetcher gets a stable, CDN-friendly response.
+app.use('/uploads', (req, res, next) => {
+  res.removeHeader('Content-Security-Policy');
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  next();
+}, express.static(path.join(__dirname, '../uploads'), {
+  fallthrough: false,
+  etag: true,
+  lastModified: true,
+}));
 
 // API routes
 app.use('/api/auth', authRoutes);
