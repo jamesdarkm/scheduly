@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
+import Thumbnail from '../components/common/Thumbnail';
 import clsx from 'clsx';
 
 const statusConfig = {
@@ -177,15 +178,12 @@ export default function DashboardPage() {
                     to={`/posts/${post.id}`}
                     className="flex items-center gap-4 p-4 hover:bg-slate-50 group"
                   >
-                    <div className="w-11 h-11 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0">
-                      {post.thumbnail ? (
-                        <img src={post.thumbnail} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <PenSquare className="w-4 h-4 text-slate-300" />
-                        </div>
-                      )}
-                    </div>
+                    <Thumbnail
+                      src={post.thumbnail}
+                      alt=""
+                      className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 object-cover"
+                      placeholder={<PenSquare className="w-4 h-4 text-slate-300" />}
+                    />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-600">
                         {post.title || post.content?.substring(0, 50)}

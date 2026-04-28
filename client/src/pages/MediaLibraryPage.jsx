@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { Upload, Trash2, X, Image, Film, Search, Filter } from 'lucide-react';
+import Thumbnail from '../components/common/Thumbnail';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 
@@ -201,10 +202,12 @@ export default function MediaLibraryPage({ onSelect, selectable = false }) {
                       <Film className="w-8 h-8 text-gray-400" />
                     </div>
                   ) : (
-                    <img
+                    <Thumbnail
                       src={item.thumbnailUrl || item.url}
                       alt={item.originalName}
                       className="w-full h-full object-cover"
+                      iconSize="w-8 h-8"
+                      placeholder={<Image className="w-8 h-8 text-slate-300" />}
                     />
                   )}
 

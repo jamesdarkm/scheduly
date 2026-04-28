@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { Plus, Trash2, PenSquare, Search, Film, Image } from 'lucide-react';
+import Thumbnail from '../components/common/Thumbnail';
 import clsx from 'clsx';
 
 const statusConfig = {
@@ -136,15 +137,12 @@ export default function PostsListPage() {
                       >
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                              {post.thumbnail ? (
-                                <img src={post.thumbnail} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <PenSquare className="w-4 h-4 text-gray-300" />
-                                </div>
-                              )}
-                            </div>
+                            <Thumbnail
+                              src={post.thumbnail}
+                              alt=""
+                              className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 object-cover"
+                              placeholder={<PenSquare className="w-4 h-4 text-slate-300" />}
+                            />
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate max-w-xs">
                                 {post.title || post.content.substring(0, 60)}
