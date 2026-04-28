@@ -23,20 +23,16 @@ async function processUpload(file, userId, teamId) {
   if (isImage) {
     try {
       const meta = await sharp(file.path).metadata();
-      const needsResize = meta.width > IG_MAX_DIMENSION || meta.height > IG_MAX_DIMENSION;
-      const needsRecode = meta.format !== 'jpeg' || meta.exif || meta.icc;
-
-      if (needsResize || needsRecode) {
-        // Re-encode through a buffer so we can overwrite the original on disk safely
-        const buffer = await sharp(file.path)
-          .rotate() // honour EXIF orientation, then strip
-          .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 90, mozjpeg: true })
-          .toBuffer();
-        fs.writeFileSync(file.path, buffer);
-        finalSize = buffer.length;
-        finalMime = 'image/jpeg';
-      }
+      // Always re-encode to baseline JPEG: Instagram rejects progressive JPEGs,
+      // and we want EXIF stripped for consistency. mozjpeg keeps quality high.
+      const buffer = await sharp(file.path)
+        .rotate() // honour EXIF orientation, then strip
+        .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 90, mozjpeg: true, progressive: false })
+        .toBuffer();
+      fs.writeFileSync(file.path, buffer);
+      finalSize = buffer.length;
+      finalMime = 'image/jpeg';
 
       // Re-read metadata after potential resize
       const finalMeta = await sharp(file.path).metadata();

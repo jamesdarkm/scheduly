@@ -117,28 +117,66 @@ async function publishToInstagram(igAccountId, encryptedToken, content, mediaFil
     );
   }
 
-  // Safety net: ensure each image meets Instagram's 1440px limit before we hand it to the API.
-  // Images uploaded before the upload-time normaliser was added may still be oversized.
+  // Normalise each image so it satisfies Instagram's strict requirements:
+  //   - baseline (non-progressive) JPEG
+  //   - max 1440px on the longest side
+  //   - aspect ratio between 4:5 (0.8) and 1.91:1
+  // We always re-encode (rather than gating on size/format) because some valid-
+  // looking files are still rejected (e.g. progressive JPEGs at correct dimensions).
   const sharp = require('sharp');
   const fs = require('fs');
   const path = require('path');
   const IG_MAX = 1440;
+  const IG_MIN_ASPECT = 0.8;   // 4:5 portrait
+  const IG_MAX_ASPECT = 1.91;  // 1.91:1 landscape
 
   for (const media of mediaFiles) {
     if (!media.mimeType?.startsWith('image/')) continue;
     const fullPath = path.join(__dirname, '../../uploads', media.filePath);
     if (!fs.existsSync(fullPath)) continue;
     try {
-      const meta = await sharp(fullPath).metadata();
-      if (meta.width > IG_MAX || meta.height > IG_MAX || meta.format !== 'jpeg') {
-        const buffer = await sharp(fullPath)
-          .rotate()
-          .resize(IG_MAX, IG_MAX, { fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 90, mozjpeg: true })
-          .toBuffer();
-        fs.writeFileSync(fullPath, buffer);
-        logger.info(`IG publish: normalised ${media.filePath} from ${meta.width}x${meta.height} (${meta.format}) to fit Instagram`);
+      const meta = await sharp(fullPath).rotate().metadata();
+      let targetW = meta.width;
+      let targetH = meta.height;
+      const aspect = targetW / targetH;
+
+      // 1) Constrain longest side to 1440
+      if (targetW > IG_MAX || targetH > IG_MAX) {
+        if (targetW >= targetH) {
+          targetH = Math.round(targetH * (IG_MAX / targetW));
+          targetW = IG_MAX;
+        } else {
+          targetW = Math.round(targetW * (IG_MAX / targetH));
+          targetH = IG_MAX;
+        }
       }
+
+      // 2) Determine final canvas size that fits within IG's allowed aspect range
+      let canvasW = targetW;
+      let canvasH = targetH;
+      if (aspect < IG_MIN_ASPECT) {
+        // Image is too tall — widen canvas (pad sides) to reach 4:5
+        canvasW = Math.round(targetH * IG_MIN_ASPECT);
+      } else if (aspect > IG_MAX_ASPECT) {
+        // Image is too wide — make canvas taller (pad top/bottom)
+        canvasH = Math.round(targetW / IG_MAX_ASPECT);
+      }
+
+      const buffer = await sharp(fullPath)
+        .rotate()
+        .resize(targetW, targetH, { fit: 'inside', withoutEnlargement: true })
+        .extend({
+          top:    Math.round((canvasH - targetH) / 2),
+          bottom: canvasH - targetH - Math.round((canvasH - targetH) / 2),
+          left:   Math.round((canvasW - targetW) / 2),
+          right:  canvasW - targetW - Math.round((canvasW - targetW) / 2),
+          background: { r: 255, g: 255, b: 255 },
+        })
+        .jpeg({ quality: 90, mozjpeg: true, progressive: false }) // baseline JPEG required by IG
+        .toBuffer();
+
+      fs.writeFileSync(fullPath, buffer);
+      logger.info(`IG publish: normalised ${media.filePath} ${meta.width}x${meta.height} → ${canvasW}x${canvasH} baseline jpeg`);
     } catch (e) {
       logger.warn(`IG publish: could not normalise ${media.filePath}: ${e.message}`);
     }
