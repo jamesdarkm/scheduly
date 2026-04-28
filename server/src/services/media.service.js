@@ -3,18 +3,47 @@ const fs = require('fs');
 const sharp = require('sharp');
 const pool = require('../config/db');
 
+// Instagram requires images to be:
+//   - JPEG, baseline-encoded
+//   - Width/height between 320 and 1440 px
+//   - Aspect ratio 4:5 (0.8) to 1.91:1 (1.91)
+// We normalise on upload so the same file works for both Facebook and Instagram.
+const IG_MAX_DIMENSION = 1440;
+const IG_MIN_DIMENSION = 320;
+
 async function processUpload(file, userId, teamId) {
   const isImage = file.mimetype.startsWith('image/');
+  const isVideo = file.mimetype.startsWith('video/');
   let width = null;
   let height = null;
   let thumbnailPath = null;
+  let finalSize = file.size;
+  let finalMime = file.mimetype;
 
   if (isImage) {
     try {
-      const metadata = await sharp(file.path).metadata();
-      width = metadata.width;
-      height = metadata.height;
+      const meta = await sharp(file.path).metadata();
+      const needsResize = meta.width > IG_MAX_DIMENSION || meta.height > IG_MAX_DIMENSION;
+      const needsRecode = meta.format !== 'jpeg' || meta.exif || meta.icc;
 
+      if (needsResize || needsRecode) {
+        // Re-encode through a buffer so we can overwrite the original on disk safely
+        const buffer = await sharp(file.path)
+          .rotate() // honour EXIF orientation, then strip
+          .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
+        fs.writeFileSync(file.path, buffer);
+        finalSize = buffer.length;
+        finalMime = 'image/jpeg';
+      }
+
+      // Re-read metadata after potential resize
+      const finalMeta = await sharp(file.path).metadata();
+      width = finalMeta.width;
+      height = finalMeta.height;
+
+      // Pad-to-square thumbnail (300x300) for the media library grid
       const thumbName = `thumb_${file.filename}`;
       const thumbDir = path.join(__dirname, '../../uploads/thumbnails');
       thumbnailPath = `thumbnails/${thumbName}`;
@@ -24,17 +53,18 @@ async function processUpload(file, userId, teamId) {
         .jpeg({ quality: 80 })
         .toFile(path.join(thumbDir, thumbName));
     } catch (err) {
-      // If thumbnail generation fails, continue without it
+      // If processing fails we still want the upload to succeed so the user
+      // sees their file. They can re-upload if it doesn't publish.
+      console.error('Image processing failed:', err.message);
     }
   }
 
-  const isVideo = file.mimetype.startsWith('video/');
   const relativePath = `${isVideo ? 'videos' : 'images'}/${file.filename}`;
 
   const [result] = await pool.execute(
     `INSERT INTO media (original_name, file_name, file_path, mime_type, file_size, width, height, thumbnail_path, uploaded_by, team_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [file.originalname, file.filename, relativePath, file.mimetype, file.size, width, height, thumbnailPath, userId, teamId || null]
+    [file.originalname, file.filename, relativePath, finalMime, finalSize, width, height, thumbnailPath, userId, teamId || null]
   );
 
   return getMedia(result.insertId);

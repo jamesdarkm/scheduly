@@ -117,6 +117,33 @@ async function publishToInstagram(igAccountId, encryptedToken, content, mediaFil
     );
   }
 
+  // Safety net: ensure each image meets Instagram's 1440px limit before we hand it to the API.
+  // Images uploaded before the upload-time normaliser was added may still be oversized.
+  const sharp = require('sharp');
+  const fs = require('fs');
+  const path = require('path');
+  const IG_MAX = 1440;
+
+  for (const media of mediaFiles) {
+    if (!media.mimeType?.startsWith('image/')) continue;
+    const fullPath = path.join(__dirname, '../../uploads', media.filePath);
+    if (!fs.existsSync(fullPath)) continue;
+    try {
+      const meta = await sharp(fullPath).metadata();
+      if (meta.width > IG_MAX || meta.height > IG_MAX || meta.format !== 'jpeg') {
+        const buffer = await sharp(fullPath)
+          .rotate()
+          .resize(IG_MAX, IG_MAX, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
+        fs.writeFileSync(fullPath, buffer);
+        logger.info(`IG publish: normalised ${media.filePath} from ${meta.width}x${meta.height} (${meta.format}) to fit Instagram`);
+      }
+    } catch (e) {
+      logger.warn(`IG publish: could not normalise ${media.filePath}: ${e.message}`);
+    }
+  }
+
   if (mediaFiles.length === 1) {
     return publishSingleMedia(igAccountId, token, content, mediaFiles[0], publicBaseUrl);
   }
