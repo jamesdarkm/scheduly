@@ -149,31 +149,29 @@ async function publishSingleMedia(igAccountId, token, content, media, publicBase
   const isVideo = media.mimeType.startsWith('video/');
   const mediaUrl = publicMediaUrl(media, publicBaseUrl);
 
-  const containerParams = {
+  // Meta's Instagram Graph API expects parameters as URL query string, not JSON body.
+  const params = {
     caption: content,
     access_token: token,
   };
-
   if (isVideo) {
-    containerParams.video_url = mediaUrl;
-    containerParams.media_type = 'REELS';
+    params.video_url = mediaUrl;
+    params.media_type = 'REELS';
   } else {
-    // For images on the new Instagram Login API, image_url is sufficient.
-    // Including media_type=IMAGE has been observed to cause Meta to misroute
-    // requests and return error 9004 ("Only photo or video can be accepted").
-    containerParams.image_url = mediaUrl;
+    params.image_url = mediaUrl;
   }
 
   logger.info(`IG publish: creating media container at ${ig.IG_GRAPH_URL}/${igAccountId}/media`, {
-    image_url: containerParams.image_url,
-    video_url: containerParams.video_url,
-    media_type: containerParams.media_type || '(not set)',
+    image_url: params.image_url,
+    video_url: params.video_url,
+    media_type: params.media_type || '(not set)',
     caption_length: content?.length || 0,
   });
 
   const { data: container } = await axios.post(
     `${ig.IG_GRAPH_URL}/${igAccountId}/media`,
-    containerParams
+    null,
+    { params }
   );
 
   if (isVideo) {
@@ -182,7 +180,8 @@ async function publishSingleMedia(igAccountId, token, content, media, publicBase
 
   const { data: publishData } = await axios.post(
     `${ig.IG_GRAPH_URL}/${igAccountId}/media_publish`,
-    { creation_id: container.id, access_token: token }
+    null,
+    { params: { creation_id: container.id, access_token: token } }
   );
 
   return publishData.id;
@@ -206,22 +205,27 @@ async function publishCarousel(igAccountId, token, content, mediaFiles, publicBa
       params.image_url = mediaUrl;
     }
 
-    const { data } = await axios.post(`${ig.IG_GRAPH_URL}/${igAccountId}/media`, params);
+    const { data } = await axios.post(`${ig.IG_GRAPH_URL}/${igAccountId}/media`, null, { params });
     childIds.push(data.id);
 
     if (isVideo) await waitForMediaProcessing(data.id, token);
   }
 
-  const { data: carousel } = await axios.post(`${ig.IG_GRAPH_URL}/${igAccountId}/media`, {
-    caption: content,
-    media_type: 'CAROUSEL',
-    children: childIds.join(','),
-    access_token: token,
-  });
+  const { data: carousel } = await axios.post(
+    `${ig.IG_GRAPH_URL}/${igAccountId}/media`,
+    null,
+    { params: {
+      caption: content,
+      media_type: 'CAROUSEL',
+      children: childIds.join(','),
+      access_token: token,
+    } }
+  );
 
   const { data: publishData } = await axios.post(
     `${ig.IG_GRAPH_URL}/${igAccountId}/media_publish`,
-    { creation_id: carousel.id, access_token: token }
+    null,
+    { params: { creation_id: carousel.id, access_token: token } }
   );
 
   return publishData.id;

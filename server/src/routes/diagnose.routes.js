@@ -41,11 +41,15 @@ router.get('/instagram/:platformAccountId', authenticate, requireRole('admin'), 
 
   // 2. Publish-test with a known-good public image
   try {
-    const { data } = await axios.post(`https://graph.instagram.com/${igAccountId}/media`, {
-      image_url: 'https://www.gstatic.com/webp/gallery/1.jpg',
-      caption: 'diagnostic test',
-      access_token: token,
-    });
+    const { data } = await axios.post(
+      `https://graph.instagram.com/${igAccountId}/media`,
+      null,
+      { params: {
+        image_url: 'https://www.gstatic.com/webp/gallery/1.jpg',
+        caption: 'diagnostic test',
+        access_token: token,
+      } }
+    );
     results.testPublishWithPublicImage = { ok: true, containerId: data.id };
   } catch (e) {
     results.testPublishWithPublicImage = {
@@ -65,11 +69,15 @@ router.get('/instagram/:platformAccountId', authenticate, requireRole('admin'), 
     const r2Url = `${process.env.R2_PUBLIC_URL}/${media[0].file_path}`;
     results.r2Url = r2Url;
     try {
-      const { data } = await axios.post(`https://graph.instagram.com/${igAccountId}/media`, {
-        image_url: r2Url,
-        caption: 'diagnostic test',
-        access_token: token,
-      });
+      const { data } = await axios.post(
+        `https://graph.instagram.com/${igAccountId}/media`,
+        null,
+        { params: {
+          image_url: r2Url,
+          caption: 'diagnostic test',
+          access_token: token,
+        } }
+      );
       results.testPublishWithR2Image = { ok: true, containerId: data.id };
     } catch (e) {
       results.testPublishWithR2Image = {
