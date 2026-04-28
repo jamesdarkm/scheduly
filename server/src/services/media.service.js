@@ -11,6 +11,32 @@ const storage = require('./storage.service');
 // We normalise on upload so the same file works for both Facebook and Instagram.
 const IG_MAX_DIMENSION = 1440;
 const IG_MIN_DIMENSION = 320;
+const IG_MIN_ASPECT = 0.8;   // 4:5 portrait
+const IG_MAX_ASPECT = 1.91;  // 1.91:1 landscape
+
+// Compute padding needed (top/bottom/left/right) to nudge image into IG's
+// allowed aspect ratio range. Returns { extend } to pass to sharp.
+function calcAspectPad(w, h) {
+  const aspect = w / h;
+  let canvasW = w;
+  let canvasH = h;
+  if (aspect < IG_MIN_ASPECT) {
+    canvasW = Math.round(h * IG_MIN_ASPECT); // widen sides
+  } else if (aspect > IG_MAX_ASPECT) {
+    canvasH = Math.round(w / IG_MAX_ASPECT); // taller top/bottom
+  } else {
+    return null; // already in range
+  }
+  const top = Math.round((canvasH - h) / 2);
+  const left = Math.round((canvasW - w) / 2);
+  return {
+    top, left,
+    bottom: canvasH - h - top,
+    right: canvasW - w - left,
+    background: { r: 255, g: 255, b: 255 },
+    canvasW, canvasH,
+  };
+}
 
 async function processUpload(file, userId, teamId) {
   const isImage = file.mimetype.startsWith('image/');
@@ -27,21 +53,33 @@ async function processUpload(file, userId, teamId) {
 
   if (isImage) {
     try {
-      const meta = await sharp(file.path).metadata();
-      // Baseline JPEG, EXIF stripped, max 1440px on longest side
-      imageBuffer = await sharp(file.path)
+      // Step 1: rotate (honour EXIF) + resize to max 1440px
+      let pipeline = sharp(file.path)
         .rotate()
-        .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+        .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true });
+
+      // Read metadata after resize so we can compute aspect-ratio padding
+      const intermediate = await pipeline.toBuffer();
+      const interMeta = await sharp(intermediate).metadata();
+      const pad = calcAspectPad(interMeta.width, interMeta.height);
+
+      // Step 2: pad to a valid IG aspect ratio if needed, then encode baseline JPEG
+      let pipeline2 = sharp(intermediate);
+      if (pad) {
+        pipeline2 = pipeline2.extend(pad);
+        console.log(`Upload: padded ${interMeta.width}x${interMeta.height} -> ${pad.canvasW}x${pad.canvasH} for IG aspect`);
+      }
+      imageBuffer = await pipeline2
         .jpeg({ quality: 90, progressive: false, optimiseCoding: true })
         .toBuffer();
-      // Refresh dimensions from the actual encoded buffer
+
       const finalMeta = await sharp(imageBuffer).metadata();
       width = finalMeta.width;
       height = finalMeta.height;
       finalSize = imageBuffer.length;
       finalMime = 'image/jpeg';
 
-      // Square thumbnail
+      // Square thumbnail (always 1:1, OK for any platform)
       thumbBuffer = await sharp(imageBuffer)
         .resize(300, 300, { fit: 'cover' })
         .jpeg({ quality: 80, progressive: false })
