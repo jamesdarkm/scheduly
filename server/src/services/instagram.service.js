@@ -158,14 +158,16 @@ async function publishSingleMedia(igAccountId, token, content, media, publicBase
     containerParams.video_url = mediaUrl;
     containerParams.media_type = 'REELS';
   } else {
+    // For images on the new Instagram Login API, image_url is sufficient.
+    // Including media_type=IMAGE has been observed to cause Meta to misroute
+    // requests and return error 9004 ("Only photo or video can be accepted").
     containerParams.image_url = mediaUrl;
-    containerParams.media_type = 'IMAGE'; // explicit per IG Login API
   }
 
   logger.info(`IG publish: creating media container at ${ig.IG_GRAPH_URL}/${igAccountId}/media`, {
     image_url: containerParams.image_url,
     video_url: containerParams.video_url,
-    media_type: containerParams.media_type,
+    media_type: containerParams.media_type || '(not set)',
     caption_length: content?.length || 0,
   });
 
