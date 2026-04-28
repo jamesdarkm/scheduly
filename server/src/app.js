@@ -17,6 +17,7 @@ const commentsRoutes = require('./routes/comments.routes');
 const teamsRoutes = require('./routes/teams.routes');
 const activityRoutes = require('./routes/activity.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const diagnoseRoutes = require('./routes/diagnose.routes');
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.use('/api/comments', commentsRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/diagnose', diagnoseRoutes);
 
 // Error handler
 app.use(errorHandler);
