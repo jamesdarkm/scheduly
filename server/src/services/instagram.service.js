@@ -182,6 +182,20 @@ async function publishToInstagram(igAccountId, encryptedToken, content, mediaFil
     }
   }
 
+  // Diagnostic: log the IG account profile to confirm the token actually works,
+  // and check which permissions the token has been granted.
+  try {
+    const { data: profile } = await axios.get(`${ig.IG_GRAPH_URL}/${igAccountId}`, {
+      params: { fields: 'id,username,account_type,name', access_token: token },
+    });
+    logger.info(`IG publish: token works for ${profile.username} (${profile.account_type})`, profile);
+  } catch (e) {
+    logger.error(`IG publish: token check FAILED — ${e.response?.data?.error?.message || e.message}`, {
+      status: e.response?.status,
+      response: e.response?.data,
+    });
+  }
+
   if (mediaFiles.length === 1) {
     return publishSingleMedia(igAccountId, token, content, mediaFiles[0], publicBaseUrl);
   }
@@ -203,7 +217,15 @@ async function publishSingleMedia(igAccountId, token, content, media, publicBase
     containerParams.media_type = 'REELS';
   } else {
     containerParams.image_url = mediaUrl;
+    containerParams.media_type = 'IMAGE'; // explicit per IG Login API
   }
+
+  logger.info(`IG publish: creating media container at ${ig.IG_GRAPH_URL}/${igAccountId}/media`, {
+    image_url: containerParams.image_url,
+    video_url: containerParams.video_url,
+    media_type: containerParams.media_type,
+    caption_length: content?.length || 0,
+  });
 
   const { data: container } = await axios.post(
     `${ig.IG_GRAPH_URL}/${igAccountId}/media`,
