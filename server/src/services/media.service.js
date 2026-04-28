@@ -28,7 +28,7 @@ async function processUpload(file, userId, teamId) {
       const buffer = await sharp(file.path)
         .rotate() // honour EXIF orientation, then strip
         .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 90, mozjpeg: true, progressive: false })
+        .jpeg({ quality: 90, progressive: false, optimiseCoding: true })
         .toBuffer();
       fs.writeFileSync(file.path, buffer);
       finalSize = buffer.length;

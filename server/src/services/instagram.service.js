@@ -172,7 +172,7 @@ async function publishToInstagram(igAccountId, encryptedToken, content, mediaFil
           right:  canvasW - targetW - Math.round((canvasW - targetW) / 2),
           background: { r: 255, g: 255, b: 255 },
         })
-        .jpeg({ quality: 90, mozjpeg: true, progressive: false }) // baseline JPEG required by IG
+        .jpeg({ quality: 90, progressive: false, optimiseCoding: true }) // baseline JPEG required by IG (mozjpeg forces progressive)
         .toBuffer();
 
       fs.writeFileSync(fullPath, buffer);
