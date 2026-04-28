@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const storage = require('./storage.service');
 
 // Convert an ISO 8601 string (or anything Date accepts) into the
 // MySQL DATETIME format: YYYY-MM-DD HH:MM:SS (UTC).
@@ -79,8 +80,8 @@ async function getPost(id) {
     fileSize: m.file_size,
     width: m.width,
     height: m.height,
-    url: `/uploads/${m.file_path}`,
-    thumbnailUrl: m.thumbnail_path ? `/uploads/${m.thumbnail_path}` : null,
+    url: storage.publicUrlFor(m.file_path),
+    thumbnailUrl: m.thumbnail_path ? storage.publicUrlFor(m.thumbnail_path) : null,
     sortOrder: m.sort_order,
   }));
 
@@ -179,7 +180,7 @@ async function listPosts({ page = 1, limit = 20, status, teamId, createdBy, sear
       [row.id]
     );
     post.thumbnail = media.length > 0
-      ? (media[0].thumbnail_path ? `/uploads/${media[0].thumbnail_path}` : `/uploads/${media[0].file_path}`)
+      ? storage.publicUrlFor(media[0].thumbnail_path || media[0].file_path)
       : null;
     post.mediaCount = 0;
     const [mc] = await pool.execute('SELECT COUNT(*) as cnt FROM post_media WHERE post_id = ?', [row.id]);

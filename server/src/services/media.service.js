@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const pool = require('../config/db');
+const storage = require('./storage.service');
 
 // Instagram requires images to be:
 //   - JPEG, baseline-encoded
@@ -16,51 +17,75 @@ async function processUpload(file, userId, teamId) {
   const isVideo = file.mimetype.startsWith('video/');
   let width = null;
   let height = null;
-  let thumbnailPath = null;
+  let thumbnailRelPath = null;
   let finalSize = file.size;
   let finalMime = file.mimetype;
+
+  // Process image: re-encode to baseline JPEG, generate thumbnail.
+  let imageBuffer = null;
+  let thumbBuffer = null;
 
   if (isImage) {
     try {
       const meta = await sharp(file.path).metadata();
-      // Always re-encode to baseline JPEG: Instagram rejects progressive JPEGs,
-      // and we want EXIF stripped for consistency. mozjpeg keeps quality high.
-      const buffer = await sharp(file.path)
-        .rotate() // honour EXIF orientation, then strip
+      // Baseline JPEG, EXIF stripped, max 1440px on longest side
+      imageBuffer = await sharp(file.path)
+        .rotate()
         .resize(IG_MAX_DIMENSION, IG_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 90, progressive: false, optimiseCoding: true })
         .toBuffer();
-      fs.writeFileSync(file.path, buffer);
-      finalSize = buffer.length;
-      finalMime = 'image/jpeg';
-
-      // Re-read metadata after potential resize
-      const finalMeta = await sharp(file.path).metadata();
+      // Refresh dimensions from the actual encoded buffer
+      const finalMeta = await sharp(imageBuffer).metadata();
       width = finalMeta.width;
       height = finalMeta.height;
+      finalSize = imageBuffer.length;
+      finalMime = 'image/jpeg';
 
-      // Pad-to-square thumbnail (300x300) for the media library grid
-      const thumbName = `thumb_${file.filename}`;
-      const thumbDir = path.join(__dirname, '../../uploads/thumbnails');
-      thumbnailPath = `thumbnails/${thumbName}`;
-
-      await sharp(file.path)
+      // Square thumbnail
+      thumbBuffer = await sharp(imageBuffer)
         .resize(300, 300, { fit: 'cover' })
-        .jpeg({ quality: 80 })
-        .toFile(path.join(thumbDir, thumbName));
+        .jpeg({ quality: 80, progressive: false })
+        .toBuffer();
     } catch (err) {
-      // If processing fails we still want the upload to succeed so the user
-      // sees their file. They can re-upload if it doesn't publish.
       console.error('Image processing failed:', err.message);
     }
   }
 
-  const relativePath = `${isVideo ? 'videos' : 'images'}/${file.filename}`;
+  // Storage keys (used for both R2 and local)
+  const fileKey = `${isVideo ? 'videos' : 'images'}/${file.filename}`;
+  const thumbKey = thumbBuffer ? `thumbnails/thumb_${file.filename}` : null;
+
+  if (storage.isEnabled()) {
+    // Upload to R2
+    if (isImage && imageBuffer) {
+      await storage.uploadToR2(fileKey, imageBuffer, finalMime);
+    } else {
+      // Video or no processing — upload original from disk
+      await storage.uploadToR2(fileKey, file.path, finalMime);
+    }
+    if (thumbBuffer && thumbKey) {
+      await storage.uploadToR2(thumbKey, thumbBuffer, 'image/jpeg');
+    }
+    // Delete local temp file since R2 has the canonical copy
+    try { fs.unlinkSync(file.path); } catch (e) { /* ignore */ }
+  } else {
+    // Local-disk fallback (dev / no R2 configured)
+    if (isImage && imageBuffer) {
+      fs.writeFileSync(file.path, imageBuffer); // overwrite original with normalised version
+    }
+    if (thumbBuffer && thumbKey) {
+      const thumbDir = path.join(__dirname, '../../uploads/thumbnails');
+      if (!fs.existsSync(thumbDir)) fs.mkdirSync(thumbDir, { recursive: true });
+      fs.writeFileSync(path.join(__dirname, '../../uploads', thumbKey), thumbBuffer);
+    }
+  }
+
+  thumbnailRelPath = thumbKey;
 
   const [result] = await pool.execute(
     `INSERT INTO media (original_name, file_name, file_path, mime_type, file_size, width, height, thumbnail_path, uploaded_by, team_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [file.originalname, file.filename, relativePath, finalMime, finalSize, width, height, thumbnailPath, userId, teamId || null]
+    [file.originalname, file.filename, fileKey, finalMime, finalSize, width, height, thumbnailRelPath, userId, teamId || null]
   );
 
   return getMedia(result.insertId);
@@ -135,13 +160,16 @@ async function deleteMedia(id, userId, userRole) {
     throw Object.assign(new Error('Not authorized to delete this media'), { status: 403 });
   }
 
-  // Delete physical files
-  const filePath = path.join(__dirname, '../../uploads', media.filePath);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-  if (media.thumbnailPath) {
-    const thumbPath = path.join(__dirname, '../../uploads', media.thumbnailPath);
-    if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+  if (storage.isEnabled()) {
+    await storage.deleteFromR2(media.filePath);
+    if (media.thumbnailPath) await storage.deleteFromR2(media.thumbnailPath);
+  } else {
+    const filePath = path.join(__dirname, '../../uploads', media.filePath);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (media.thumbnailPath) {
+      const thumbPath = path.join(__dirname, '../../uploads', media.thumbnailPath);
+      if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+    }
   }
 
   await pool.execute('DELETE FROM media WHERE id = ?', [id]);
@@ -162,8 +190,8 @@ function formatMedia(row) {
     uploaderName: row.first_name ? `${row.first_name} ${row.last_name}` : undefined,
     teamId: row.team_id,
     createdAt: row.created_at,
-    url: `/uploads/${row.file_path}`,
-    thumbnailUrl: row.thumbnail_path ? `/uploads/${row.thumbnail_path}` : null,
+    url: storage.publicUrlFor(row.file_path),
+    thumbnailUrl: row.thumbnail_path ? storage.publicUrlFor(row.thumbnail_path) : null,
   };
 }
 

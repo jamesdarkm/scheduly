@@ -2,7 +2,21 @@ const axios = require('axios');
 const pool = require('../config/db');
 const ig = require('../config/instagram');
 const { encrypt, decrypt } = require('./token.service');
+const storage = require('./storage.service');
 const logger = require('../utils/logger');
+
+// Build the public URL Meta will fetch. R2 returns an absolute Cloudflare URL;
+// otherwise we fall back to publicBaseUrl + /uploads/...
+function publicMediaUrl(media, publicBaseUrl) {
+  const url = storage.publicUrlFor(media.filePath);
+  if (url && url.startsWith('http')) return url; // R2 absolute URL
+  if (!publicBaseUrl) {
+    throw new Error(
+      'No public URL for media. Configure R2_* env vars or set IG_PUBLIC_BASE_URL.'
+    );
+  }
+  return `${publicBaseUrl}${url}`;
+}
 
 // ── OAuth Flow (Instagram Business Login - direct, no Facebook Page needed) ──
 
@@ -111,79 +125,7 @@ async function publishToInstagram(igAccountId, encryptedToken, content, mediaFil
     throw new Error('Instagram requires at least one image or video');
   }
 
-  if (!publicBaseUrl) {
-    throw new Error(
-      'Instagram requires media to be accessible via public URL. Set IG_PUBLIC_BASE_URL in .env to your server\'s public URL.'
-    );
-  }
-
-  // Normalise each image so it satisfies Instagram's strict requirements:
-  //   - baseline (non-progressive) JPEG
-  //   - max 1440px on the longest side
-  //   - aspect ratio between 4:5 (0.8) and 1.91:1
-  // We always re-encode (rather than gating on size/format) because some valid-
-  // looking files are still rejected (e.g. progressive JPEGs at correct dimensions).
-  const sharp = require('sharp');
-  const fs = require('fs');
-  const path = require('path');
-  const IG_MAX = 1440;
-  const IG_MIN_ASPECT = 0.8;   // 4:5 portrait
-  const IG_MAX_ASPECT = 1.91;  // 1.91:1 landscape
-
-  for (const media of mediaFiles) {
-    if (!media.mimeType?.startsWith('image/')) continue;
-    const fullPath = path.join(__dirname, '../../uploads', media.filePath);
-    if (!fs.existsSync(fullPath)) continue;
-    try {
-      const meta = await sharp(fullPath).rotate().metadata();
-      let targetW = meta.width;
-      let targetH = meta.height;
-      const aspect = targetW / targetH;
-
-      // 1) Constrain longest side to 1440
-      if (targetW > IG_MAX || targetH > IG_MAX) {
-        if (targetW >= targetH) {
-          targetH = Math.round(targetH * (IG_MAX / targetW));
-          targetW = IG_MAX;
-        } else {
-          targetW = Math.round(targetW * (IG_MAX / targetH));
-          targetH = IG_MAX;
-        }
-      }
-
-      // 2) Determine final canvas size that fits within IG's allowed aspect range
-      let canvasW = targetW;
-      let canvasH = targetH;
-      if (aspect < IG_MIN_ASPECT) {
-        // Image is too tall — widen canvas (pad sides) to reach 4:5
-        canvasW = Math.round(targetH * IG_MIN_ASPECT);
-      } else if (aspect > IG_MAX_ASPECT) {
-        // Image is too wide — make canvas taller (pad top/bottom)
-        canvasH = Math.round(targetW / IG_MAX_ASPECT);
-      }
-
-      const buffer = await sharp(fullPath)
-        .rotate()
-        .resize(targetW, targetH, { fit: 'inside', withoutEnlargement: true })
-        .extend({
-          top:    Math.round((canvasH - targetH) / 2),
-          bottom: canvasH - targetH - Math.round((canvasH - targetH) / 2),
-          left:   Math.round((canvasW - targetW) / 2),
-          right:  canvasW - targetW - Math.round((canvasW - targetW) / 2),
-          background: { r: 255, g: 255, b: 255 },
-        })
-        .jpeg({ quality: 90, progressive: false, optimiseCoding: true }) // baseline JPEG required by IG (mozjpeg forces progressive)
-        .toBuffer();
-
-      fs.writeFileSync(fullPath, buffer);
-      logger.info(`IG publish: normalised ${media.filePath} ${meta.width}x${meta.height} → ${canvasW}x${canvasH} baseline jpeg`);
-    } catch (e) {
-      logger.warn(`IG publish: could not normalise ${media.filePath}: ${e.message}`);
-    }
-  }
-
-  // Diagnostic: log the IG account profile to confirm the token actually works,
-  // and check which permissions the token has been granted.
+  // Diagnostic: confirm the token works and the account is publishing-eligible
   try {
     const { data: profile } = await axios.get(`${ig.IG_GRAPH_URL}/${igAccountId}`, {
       params: { fields: 'id,username,account_type,name', access_token: token },
@@ -205,7 +147,7 @@ async function publishToInstagram(igAccountId, encryptedToken, content, mediaFil
 
 async function publishSingleMedia(igAccountId, token, content, media, publicBaseUrl) {
   const isVideo = media.mimeType.startsWith('video/');
-  const mediaUrl = `${publicBaseUrl}/uploads/${media.filePath}`;
+  const mediaUrl = publicMediaUrl(media, publicBaseUrl);
 
   const containerParams = {
     caption: content,
@@ -249,7 +191,7 @@ async function publishCarousel(igAccountId, token, content, mediaFiles, publicBa
 
   for (const media of mediaFiles) {
     const isVideo = media.mimeType.startsWith('video/');
-    const mediaUrl = `${publicBaseUrl}/uploads/${media.filePath}`;
+    const mediaUrl = publicMediaUrl(media, publicBaseUrl);
     const params = {
       is_carousel_item: true,
       access_token: token,
