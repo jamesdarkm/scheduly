@@ -21,6 +21,11 @@ import { format } from 'date-fns';
 const IG_LIMIT = 2200;
 const FB_LIMIT = 63206;
 
+function localNow() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function AccountSelector({ accounts, selected, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -329,15 +334,25 @@ export default function PostCreatePage() {
           >
             Auto Publish {autoPublish ? 'on' : 'off'}
           </button>
-          <div className="relative">
-            <input
-              type="datetime-local"
-              value={scheduleDate}
-              onChange={e => setScheduleDate(e.target.value)}
-              min={new Date().toISOString().slice(0, 16)}
-              className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white font-medium text-slate-700 cursor-pointer"
-            />
-            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          <div className="relative flex items-center gap-1.5">
+            <div className="relative">
+              <input
+                type="datetime-local"
+                value={scheduleDate}
+                onChange={e => setScheduleDate(e.target.value)}
+                min={localNow()}
+                className="pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white font-medium text-slate-700 cursor-pointer"
+              />
+              <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setScheduleDate(localNow())}
+              className="px-2 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
+              title="Set to current date and time"
+            >
+              Now
+            </button>
           </div>
         </div>
 

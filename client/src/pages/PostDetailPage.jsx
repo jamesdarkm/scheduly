@@ -12,6 +12,11 @@ import {
 import clsx from 'clsx';
 import CommentThread from '../components/posts/CommentThread';
 
+function localNow() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
   pending_approval: { label: 'Pending Approval', color: 'bg-yellow-100 text-yellow-700' },
@@ -334,13 +339,23 @@ export default function PostDetailPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Schedule Post</h3>
-            <input
-              type="datetime-local"
-              value={scheduleDate}
-              onChange={e => setScheduleDate(e.target.value)}
-              min={new Date().toISOString().slice(0, 16)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="datetime-local"
+                value={scheduleDate}
+                onChange={e => setScheduleDate(e.target.value)}
+                min={localNow()}
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setScheduleDate(localNow())}
+                className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+                title="Set to current date and time"
+              >
+                Now
+              </button>
+            </div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setShowScheduleModal(false)} className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg">
                 Cancel
